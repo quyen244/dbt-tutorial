@@ -1,65 +1,179 @@
+services:
 
-services :
-   source :
-      image: postgres:15
-      ports:
-         - "5432:5432"
-      networks:
-         - elt_network
-      environment:
-         POSTGRES_DB : source_db
-         POSTGRES_USER : postgres
-         POSTGRES_PASSWORD : secret
-      volumes:
-            - ./source_db_init/init.sql:/docker-entrypoint-initdb.d/init.sql
+  source:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    networks:
+      - elt_network
+    environment:
+      POSTGRES_DB: source_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - ./source_db_init/init.sql:/docker-entrypoint-initdb.d/init.sql
 
-   destination :
-      image: postgres:15
-      ports:
-         - "5433:5432" 
-      networks:
-         - elt_network
-      environment:
-         POSTGRES_DB : destination_db 
-         POSTGRES_USER : postgres 
-         POSTGRES_PASSWORD : secret 
-   elt_script:
-      build:
-         context : .
-         dockerfile: Dockerfile.elt_script
-      command : [ 
-         "python", 
-         "elt_script.py"
-      ]
-      networks: 
-         - elt_network 
-      depends_on : 
-         - source 
-         - destination 
-   dbt:
-      image : ghcr.io/dbt-labs/dbt-postgres
-      command :
-         [
-            "run",
-            "--profiles-dir",
-            "/root",
-            "--project-dir",
-            "/dbt"
-         ]
-      networks:
-        - elt_network 
-      volumes:
-         - ./first_dbt:/dbt
-         - "C:/Users/Admin/.dbt:/root" # profile configuration : a detail db connection
-      depends_on:
-         elt_script:
-            condition: service_completed_successfully
-      environment:
-         DBT_PROFILE : first_dbt
-         DBT_TARGET : dev
+  destination:
+    image: postgres:15
+    ports:
+      - "5433:5432"
+    networks:
+      - elt_network
+    environment:
+      POSTGRES_DB: destination_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    networks:
+      - elt_network
+
+  init-airflow:
+    image: apache/airflow:latest
+    depends_on:
+      - postgres
+    networks:
+      - elt_network
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: Fh0JA33a8Nwo4uzrk6opw0gyfImjSAAT4lBXKBfXv0I=
+      AIRFLOW__API__SECRET_KEY: secret
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://webserver:8080/execution/
+      AIRFLOW__API_AUTH__JWT_SECRET: secret
+
+    command: bash -c "airflow db migrate && airflow users create --username airflow --password password --firstname John --lastname Doe --role Admin --email admin@example.org"
+
+  webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+
+    user: root
+
+    depends_on:
+      init-airflow:
+         condition: service_completed_successfully
+
+    networks:
+      - elt_network
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./elt_script.py:/opt/airflow/elt/elt_script.py
+      - ./first_dbt:/opt/dbt
+      - "C:/Users/Admin/.dbt:/root/.dbt"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - airflow-logs:/opt/airflow/logs
+
+    environment:
+      LOAD_EX: "n"
+      EXECUTOR: "local"
+
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres/airflow
+
+      AIRFLOW__CORE__FERNET_KEY: Fh0JA33a8Nwo4uzrk6opw0gyfImjSAAT4lBXKBfXv0I=
+
+      AIRFLOW__API__SECRET_KEY: secret
+
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://webserver:8080/execution/
+      AIRFLOW__API_AUTH__JWT_SECRET: secret
+
+    ports:
+      - "8080:8080"
+
+    command: api-server
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+
+    user: root
+
+    networks:
+      - elt_network
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./elt_script.py:/opt/airflow/elt/elt_script.py
+      - ./first_dbt:/opt/dbt
+      - "C:/Users/Admin/.dbt:/root/.dbt"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - airflow-logs:/opt/airflow/logs
+
+    environment:
+      LOAD_EX: "n"
+      EXECUTOR: "local"
+
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres/airflow
+
+      AIRFLOW__CORE__FERNET_KEY: Fh0JA33a8Nwo4uzrk6opw0gyfImjSAAT4lBXKBfXv0I=
+
+      AIRFLOW__API__SECRET_KEY: secret
+
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://webserver:8080/execution/
+      AIRFLOW__API_AUTH__JWT_SECRET: secret
+    depends_on:
+      init-airflow:
+         condition: service_completed_successfully
+
+    command: scheduler
+
+  dag-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+
+    user: root
+
+    depends_on:
+      init-airflow:
+         condition: service_completed_successfully
+
+    networks:
+      - elt_network
+
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./elt_script.py:/opt/airflow/elt/elt_script.py
+      - ./first_dbt:/opt/dbt
+      - "C:/Users/Admin/.dbt:/root/.dbt"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - airflow-logs:/opt/airflow/logs
+
+    environment:
+      LOAD_EX: "n"
+      EXECUTOR: "local"
+
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres/airflow
+
+      AIRFLOW__CORE__FERNET_KEY: Fh0JA33a8Nwo4uzrk6opw0gyfImjSAAT4lBXKBfXv0I=
+
+      AIRFLOW__API__SECRET_KEY: secret
+
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://webserver:8080/execution/
+      AIRFLOW__API_AUTH__JWT_SECRET: secret
+
+    command: dag-processor
 
 networks:
   elt_network:
-   driver: bridge 
+    driver: bridge
 
-
+volumes:
+  airflow-logs:

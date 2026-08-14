@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+
+# Environment / secrets - never commit these
+.env
+*.env
+profiles.yml
+
+# Logs (matches at any depth: logs/, first_dbt/logs/, ...)
+logs/
+*.log
+
+# dbt build artifacts
+first_dbt/target/
+first_dbt/dbt_packages/
+
+# Stray artifact created by a past bad docker volume mount
+.elt_script.py/
