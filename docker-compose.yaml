@@ -1,7 +1,4 @@
 
-
-version : '3'
-
 services :
    source :
       image: postgres:15
@@ -39,7 +36,28 @@ services :
       depends_on : 
          - source 
          - destination 
-      
+   dbt:
+      image : ghcr.io/dbt-labs/dbt-postgres
+      command :
+         [
+            "run",
+            "--profiles-dir",
+            "/root",
+            "--project-dir",
+            "/dbt"
+         ]
+      networks:
+        - elt_network 
+      volumes:
+         - ./first_dbt:/dbt
+         - "C:/Users/Admin/.dbt:/root" # profile configuration : a detail db connection
+      depends_on:
+         elt_script:
+            condition: service_completed_successfully
+      environment:
+         DBT_PROFILE : first_dbt
+         DBT_TARGET : dev
+
 networks:
   elt_network:
    driver: bridge 

@@ -1,5 +1,5 @@
 SELECT *
-FROM  {{ source('destination_db', 'films') }};
+FROM  {{ source('destination_db', 'films') }}
 
 
  
