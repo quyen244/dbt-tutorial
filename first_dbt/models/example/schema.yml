@@ -73,3 +73,24 @@ models:
               values: ['Excellent', 'Good', 'Average', 'Poor']
       - name: actors
         description: "Comma-separated list of actors in the film"
+  - name : specific_movie 
+    description : "specific movie"
+    columns : 
+      - name: film_id
+        description: "Primary key of the films table"
+        tests:
+          - unique
+          - not_null
+      - name: title
+        description: "Title of the film"
+        tests:
+          - not_null
+      - name: release_date
+        description: "Date the film was released"
+      - name: price
+        description: "Rental/purchase price of the film"
+      - name: rating
+        description: "MPAA content rating (e.g. PG-13, R)"
+      - name: user_rating
+        description: "Average user rating, between 1 and 5"
+

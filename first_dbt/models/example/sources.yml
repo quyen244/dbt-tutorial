@@ -12,3 +12,5 @@ sources:
         description : "List of actors"
       - name : film_actors
         description : "Mapping between films and actors"
+      - name : film_category 
+        description: "Films' category"
